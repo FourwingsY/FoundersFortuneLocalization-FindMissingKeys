@@ -3,16 +3,29 @@ const button = document.getElementById("submit")
 button.addEventListener('click', async () => {
     const id = document.getElementById("id").value
     const pw = document.getElementById("pw").value
+    const repoName = document.getElementById("repo").value
+    const branchName = document.getElementById("branch").value
     const language = document.getElementById("language").value
+    const output = document.getElementById("results")
+
+    output.innerText = ""
 
     const gh = new GitHub({
         username: id,
         password: pw
     });
-    const repo = gh.getRepo('Ponzel', 'FoundersFortuneLocalization')
-    const master = await repo.getBranch("master")
-    const recentCommit = master.data.commit.sha
-    const tree = await repo.getTree(recentCommit)
+    const [user, repo] = repoName.split("/")
+    const repository = gh.getRepo(user, repo)
+    let branch = undefined
+    try {
+        branch = await repository.getBranch(branchName)
+    }
+    catch (e) {
+        output.innerText = e.message
+        return
+    }
+    const recentCommit = branch.data.commit.sha
+    const tree = await repository.getTree(recentCommit)
     const files = tree.data.tree.map((node) => node.path)
 
     files.forEach(async file => {
@@ -22,14 +35,27 @@ button.addEventListener('click', async () => {
         if (file == 'genderDictionary.json') {
             return
         }
-        const contents = await repo.getContents("master", file, true)
+        const contents = await repository.getContents(branchName, file, true)
         jsonObject = parseJson(contents.data);
-        errors = check(jsonObject, language);
+        let [errors, ratio] = check(jsonObject, language);
         if (errors.length > 0) {
-            console.log("Missing keys in: " + file);
-            console.log(errors);
-        } else {
-            console.log("No Error")
+            const errorDesc = document.createElement("p");
+
+            const errorFile = document.createElement("span");
+            errorFile.classList.add("error-title")
+            errorFile.innerText = `Missing keys in: ${file} (${(ratio * 100).toFixed(1)}%)`;
+            errorDesc.appendChild(errorFile)
+
+            const errorList = document.createElement("ul");
+            for (k in errors) {
+                let missingKey = document.createElement("li");
+                missingKey.classList.add("missing-key");
+                missingKey.innerText = errors[k];
+                errorList.appendChild(missingKey)
+            }
+            errorDesc.appendChild(errorList);
+
+            output.appendChild(errorDesc);
         }
     });
 })
@@ -54,5 +80,6 @@ function check(json, language) {
             errors.push(key)
         }
     }
-    return errors
+    const ratio = errors.length / Object.keys(json).length
+    return [errors, ratio]
 }
