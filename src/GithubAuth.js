@@ -1,38 +1,60 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Github from 'github-api';
-import useAuth from './useAuth'
 
-export default function GithubAuth() {
+function isAuthenticated(auth) {
+  if (auth == null) return false
+  return auth.__auth && Object.entries(auth.__auth).length > 0
+}
+
+export default function GithubAuth({auth, setAuth}) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [auth, setAuth] = useAuth()
+  const [limit, setLimit] = useState(0)
 
-  async function handleClick() {
-    const authenticated = new Github({
+  useEffect(() => {
+    async function checkLimit(auth) { 
+      const response = await auth.getRateLimit().getRateLimit()
+      const remainCount = response.headers["x-ratelimit-remaining"]
+      setLimit(remainCount)
+    }
+    checkLimit(auth || new Github())
+  })
+
+  /**
+   * login
+   */
+  async function login() {
+    const newAuth = new Github({
       username,
       password
     });
-    
+
     // verify account
-    authenticated.getRateLimit().getRateLimit()
-      .then(() => {setAuth(authenticated)})
+    newAuth.getRateLimit().getRateLimit()
+      .then(() => {setAuth(newAuth)})
       .catch((e) => {
         if (e.response.status === 401) {
           // show login error
         }
       })
   }
-  
-  // if login successed, do not show login form
-  if (auth !== null) {
+
+  function doGuest() {
+    setAuth(new Github())
+  }
+
+  if (isAuthenticated(auth)) {
     return (
       <div>Authentication OK!</div>
     )
   }
   return (
-    <>
-      <p>This form is for using github api. without login, api limit is too low.</p>
-      <form>
+    <div>
+      <div className="guest">
+        <span>{limit}</span>
+        <button onClick={doGuest}>Do with guest token</button>
+      </div>
+      <div className="login">
         <input 
           type="email"
           placeholder="github ID" 
@@ -45,8 +67,8 @@ export default function GithubAuth() {
           value={password} 
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button onClick={handleClick}>Login</button>
-      </form>
-    </>
+        <button onClick={login}>Login</button>
+      </div>
+    </div>
   )
 }
